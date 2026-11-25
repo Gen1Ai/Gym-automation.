@@ -1,0 +1,213 @@
+{
+  "name": "Gym Automation - Signup, Reminder, Weekly Report",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Gym Automation\n\n**Google Sheet** (tab name: `Members`) columns, exact spelling:\nName | Phone | Plan | Fee | Join Date | Expiry | Status\n\n**Setup:**\n1. Har Google Sheets node mein apna credential + Sheet ID select karo\n2. Har WhatsApp node mein WhatsApp Business Cloud credential + Phone Number ID daalo\n3. 'WhatsApp Report to Owner' mein OWNER_PHONE apna number (92300XXXXXXX) se replace karo\n4. Workflow activate karo\n\n**Note:** Meta ke rules ke mutabiq business-initiated messages ke liye approved template chahiye. Testing mein sirf verified numbers par jata hai.",
+        "height": 380,
+        "width": 520
+      },
+      "id": "a1000001-0000-4000-8000-000000000001",
+      "name": "Setup Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-60, -440]
+    },
+    {
+      "parameters": {
+        "formTitle": "Gym Membership Signup",
+        "formDescription": "Join karne ke liye apni details bharein.",
+        "formFields": {
+          "values": [
+            { "fieldLabel": "Full Name", "requiredField": true },
+            { "fieldLabel": "WhatsApp Number", "placeholder": "03XXXXXXXXX", "requiredField": true },
+            {
+              "fieldLabel": "Plan",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Monthly" },
+                  { "option": "Quarterly" },
+                  { "option": "Yearly" }
+                ]
+              },
+              "requiredField": true
+            },
+            { "fieldLabel": "Fee Paid", "fieldType": "number" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000002",
+      "name": "Member Signup Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 0],
+      "webhookId": "b2c3d4e5-1111-4222-8333-444455556666"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst days = { Monthly: 30, Quarterly: 90, Yearly: 365 }[d['Plan']] || 30;\nconst join = new Date();\nconst exp = new Date(join.getTime() + days * 86400000);\nconst fmt = x => x.toISOString().slice(0, 10);\nlet phone = String(d['WhatsApp Number']).replace(/\\D/g, '');\nif (phone.startsWith('0')) phone = '92' + phone.slice(1);\nreturn [{ json: {\n  name: d['Full Name'],\n  phone,\n  plan: d['Plan'],\n  fee: d['Fee Paid'] || 0,\n  joinDate: fmt(join),\n  expiryDate: fmt(exp),\n  status: 'Active'\n} }];"
+      },
+      "id": "a1000001-0000-4000-8000-000000000003",
+      "name": "Prepare Member Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Members", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.name }}",
+            "Phone": "={{ $json.phone }}",
+            "Plan": "={{ $json.plan }}",
+            "Fee": "={{ $json.fee }}",
+            "Join Date": "={{ $json.joinDate }}",
+            "Expiry": "={{ $json.expiryDate }}",
+            "Status": "={{ $json.status }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000004",
+      "name": "Save to Members Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $('Prepare Member Data').item.json.phone }}",
+        "textBody": "=Assalam o Alaikum {{ $('Prepare Member Data').item.json.name }}! 💪\nGym mein khush aamdeed. Aapka {{ $('Prepare Member Data').item.json.plan }} plan active ho gaya hai.\nExpiry date: {{ $('Prepare Member Data').item.json.expiryDate }}\nKoi sawal ho to isi number par message karein.",
+        "additionalFields": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000005",
+      "name": "WhatsApp Welcome",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "days", "daysInterval": 1, "triggerAtHour": 9 }
+          ]
+        }
+      },
+      "id": "a1000001-0000-4000-8000-000000000006",
+      "name": "Daily 9AM Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Members", "mode": "name" },
+        "options": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000007",
+      "name": "Get Members",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const today = new Date();\ntoday.setHours(0, 0, 0, 0);\nconst out = [];\nfor (const it of $input.all()) {\n  const r = it.json;\n  if (!r.Expiry || r.Status === 'Expired') continue;\n  const diff = Math.round((new Date(r.Expiry) - today) / 86400000);\n  if (diff === 3 || diff === 0) {\n    out.push({ json: { name: r.Name, phone: String(r.Phone), expiry: r.Expiry, daysLeft: diff } });\n  }\n}\nreturn out;"
+      },
+      "id": "a1000001-0000-4000-8000-000000000008",
+      "name": "Find Expiring Memberships",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $json.phone }}",
+        "textBody": "=Salam {{ $json.name }}! ⏰\nAapki gym membership {{ $json.daysLeft === 0 ? 'aaj' : $json.daysLeft + ' din mein' }} expire ho rahi hai ({{ $json.expiry }}).\nRenew karne ke liye reception par rabta karein.",
+        "additionalFields": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000009",
+      "name": "WhatsApp Renewal Reminder",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "weeks", "weeksInterval": 1, "triggerAtDay": [1], "triggerAtHour": 9 }
+          ]
+        }
+      },
+      "id": "a1000001-0000-4000-8000-000000000010",
+      "name": "Weekly Report Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 600]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Members", "mode": "name" },
+        "options": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000011",
+      "name": "Get Members (Report)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst today = new Date();\ntoday.setHours(0, 0, 0, 0);\nconst weekAgo = new Date(today.getTime() - 7 * 86400000);\nlet active = 0, expired = 0, newJoins = 0, expiringSoon = 0, revenue = 0;\nfor (const r of rows) {\n  if (!r.Expiry) continue;\n  const diff = Math.round((new Date(r.Expiry) - today) / 86400000);\n  if (diff < 0) expired++; else active++;\n  if (diff >= 0 && diff <= 7) expiringSoon++;\n  if (r['Join Date'] && new Date(r['Join Date']) >= weekAgo) {\n    newJoins++;\n    revenue += Number(r.Fee) || 0;\n  }\n}\nreturn [{ json: { total: rows.length, active, expired, newJoins, expiringSoon, revenue } }];"
+      },
+      "id": "a1000001-0000-4000-8000-000000000012",
+      "name": "Build Weekly Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 600]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "OWNER_PHONE",
+        "textBody": "=📊 Weekly Gym Report\nTotal members: {{ $json.total }}\nActive: {{ $json.active }}\nExpired: {{ $json.expired }}\nNaye members (7 din): {{ $json.newJoins }}\nIs hafte expire hone wale: {{ $json.expiringSoon }}\nNaye members se income: Rs {{ $json.revenue }}",
+        "additionalFields": {}
+      },
+      "id": "a1000001-0000-4000-8000-000000000013",
+      "name": "WhatsApp Report to Owner",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [720, 600]
+    }
+  ],
+  "connections": {
+    "Member Signup Form": { "main": [[{ "node": "Prepare Member Data", "type": "main", "index": 0 }]] },
+    "Prepare Member Data": { "main": [[{ "node": "Save to Members Sheet", "type": "main", "index": 0 }]] },
+    "Save to Members Sheet": { "main": [[{ "node": "WhatsApp Welcome", "type": "main", "index": 0 }]] },
+    "Daily 9AM Check": { "main": [[{ "node": "Get Members", "type": "main", "index": 0 }]] },
+    "Get Members": { "main": [[{ "node": "Find Expiring Memberships", "type": "main", "index": 0 }]] },
+    "Find Expiring Memberships": { "main": [[{ "node": "WhatsApp Renewal Reminder", "type": "main", "index": 0 }]] },
+    "Weekly Report Trigger": { "main": [[{ "node": "Get Members (Report)", "type": "main", "index": 0 }]] },
+    "Get Members (Report)": { "main": [[{ "node": "Build Weekly Report", "type": "main", "index": 0 }]] },
+    "Build Weekly Report": { "main": [[{ "node": "WhatsApp Report to Owner", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}
